@@ -1,0 +1,28 @@
+<div data-mural-id="{{ img['id'] }}" class="mural-card {{ '' if session.get('is_admin') else 'mural-card-view' }}" data-category="{{ img['category'] or 'Outro' }}">
+    <div class="mural-img-wrap" data-src="{{ url_for('static', filename='mural_images/' + img['image']) }}" data-caption="{{ img['caption'] or '' }}" data-author="{{ img['username'] or '' }}">
+        <img class="mural-img" src="{{ url_for('static', filename='mural_images/' + img['image']) }}" alt="{{ img['caption'] or 'Imagem do mural' }}" loading="lazy">
+        <div class="mural-img-overlay">
+            {% if img['caption'] %}
+                <div class="mural-caption">{{ img['caption'] }}</div>
+            {% endif %}
+            {% if img['username'] %}
+                <div class="mural-author">{{ img['username'] }}</div>
+            {% endif %}
+        </div>
+        <button type="button" class="mural-expand-btn" title="Expandir imagem" aria-label="Expandir imagem">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/>
+                <circle cx="12" cy="12" r="3"/>
+            </svg>
+        </button>
+        {% if img['category'] %}
+            <span class="mural-category-tag">{{ img['category'] }}</span>
+        {% endif %}
+    </div>
+    {% if session.get('is_admin') or img['user_id'] == session.get('user_id') %}
+        <form method="POST" action="{{ url_for('mural_delete', image_id=img['id']) }}"
+            onsubmit="return confirmDelete(this, 'Remover esta imagem do mural?');">
+            <button type="submit" class="btn-delete btn-sm mural-delete-btn" aria-label="Excluir" title="Excluir"><svg class="icon-trash" viewBox="-3 -2 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2h5a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h5V1a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1zm3.8 6l-.613 9.2a3 3 0 0 1-2.993 2.8H5.826a3 3 0 0 1-2.993-2.796L2.205 8H15.8zM7 9a1 1 0 0 0-1 1v7a1 1 0 0 0 2 0v-7a1 1 0 0 0-1-1zm4 0a1 1 0 0 0-1 1v7a1 1 0 0 0 2 0v-7a1 1 0 0 0-1-1z"/></svg></button>
+        </form>
+    {% endif %}
+</div>

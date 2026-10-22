@@ -1,0 +1,152 @@
+{# Catálogo de Rituais (pesquisa) — usado abaixo da sub-aba "Rituais" do painel.
+   Parâmetros opcionais (via {% with %}): rc_agent_id = id do agente que recebe o ritual (admin). #}
+{% set rc_admin = session.get('is_admin') %}
+<details class="add-form-details rc-root" data-rc-agent="{{ rc_agent_id or '' }}"{% if not rc_admin %} open{% endif %}>
+    <summary>Pesquisar no Catálogo de Rituais</summary>
+    <p class="character-header-sub">Busque um ritual e adicione {{ 'à ficha deste agente' if rc_admin else 'à sua ficha' }}.</p>
+
+    <div class="field-grid rc-filter-grid">
+        <div>
+            <label>Buscar</label>
+            <input type="text" class="rc-q" placeholder="Nome ou efeito..." autocomplete="off">
+        </div>
+        <div>
+            <label>Elemento</label>
+            <select class="rc-element">
+                <option value="">Todos</option>
+                {% for el in ritual_elements %}<option value="{{ el }}">{{ el }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label>Círculo</label>
+            <select class="rc-circle">
+                <option value="">Todos</option>
+                {% for c in ritual_circle_costs.keys() %}<option value="{{ c }}">{{ c }}º Círculo</option>{% endfor %}
+            </select>
+        </div>
+    </div>
+
+    <p class="character-header-sub rc-count rc-count-gap"></p>
+    <div class="ritual-list rc-list"></div>
+
+</details>
+
+<script>
+(function () {
+    // Cada bloco do catálogo é independente (no admin há um por agente).
+    const root = document.currentScript.previousElementSibling;
+    if (!root || !root.classList.contains('rc-root')) return;
+    const IS_ADMIN = {{ 'true' if rc_admin else 'false' }};
+    const AGENT_ID = root.dataset.rcAgent ? parseInt(root.dataset.rcAgent, 10) : null;
+    const ICONS = {{ ritual_element_icons | tojson }};
+    const FIELDS = ['name', 'element', 'circle', 'execution', 'range', 'target', 'duration',
+                    'resistance', 'effect_summary', 'pe_cost_discente', 'pe_cost_verdadeira',
+                    'description_discente', 'description_verdadeira'];
+    const q = (sel) => root.querySelector(sel);
+    const field = (f) => root.querySelector('[data-f="' + f + '"]');
+    let cache = {};
+    let editingId = null;
+    let loaded = false;
+
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+            ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+    }
+
+    async function api(url, method, body) {
+        const res = await fetch(url, {
+            method: method || 'GET',
+            headers: body ? {'Content-Type': 'application/json'} : {},
+            body: body ? JSON.stringify(body) : undefined,
+        });
+        let data = {};
+        try { data = await res.json(); } catch (e) {}
+        return {ok: res.ok && data.ok !== false, status: res.status, data};
+    }
+
+    function cardHtml(r) {
+        const el = String(r.element).toLowerCase();
+        const extra = (label, text) => text
+            ? '<div class="ritual-effect"><strong>' + label + ':</strong> ' + esc(text) + '</div>' : '';
+        const actions =
+            '<button type="button" class="btn-sm btn-increase" data-act="add" data-id="' + r.id + '">' +
+                (IS_ADMIN ? 'Adicionar ao agente' : 'Adicionar à minha ficha') + '</button>';
+        return '<div class="ritual-card elem-' + esc(el) + '">' +
+            '<div class="ritual-card-header">' +
+                (r.symbol_url ? '<img class="ritual-symbol-mini" draggable="false" src="' + esc(r.symbol_url) + '" alt="Símbolo de ' + esc(r.name) + '">' : '') +
+                '<span class="ritual-name">' + esc(r.name) + '</span>' +
+                '<span class="ritual-element elem-' + esc(el) + '">' + esc(r.element) +
+                    '<svg class="ritual-element-icon" viewBox="0 0 800 800" aria-hidden="true">' + (ICONS[el] || '') + '</svg></span>' +
+                '<span class="ritual-pe"><span class="ritual-circle">' + r.circle + 'º Círculo</span></span>' +
+                '<span class="ability-pe-cost ritual-pe-chip">' + r.pe_cost_normal + ' {{ pe_t }}</span>' +
+                '<div class="ritual-card-actions">' + actions + '</div>' +
+            '</div>' +
+            '<div class="ritual-meta-grid">' +
+                '<div><span class="ritual-meta-label">Execução</span>' + esc(r.execution || '—') + '</div>' +
+                '<div><span class="ritual-meta-label">Alcance</span>' + esc(r.range || '—') + '</div>' +
+                '<div><span class="ritual-meta-label">Alvo / Área</span>' + esc(r.target || '—') + '</div>' +
+                '<div><span class="ritual-meta-label">Duração</span>' + esc(r.duration || '—') + '</div>' +
+                '<div><span class="ritual-meta-label">Resistência</span>' + esc(r.resistance || 'Nenhuma') + '</div>' +
+            '</div>' +
+            extra('Efeito', r.effect_summary) +
+            extra('Discente (' + r.pe_cost_discente + ' {{ pe_t }})', r.description_discente) +
+            extra('Verdadeiro (' + r.pe_cost_verdadeira + ' {{ pe_t }})', r.description_verdadeira) +
+        '</div>';
+    }
+
+    const HINT = 'Pesquise por nome ou efeito, ou escolha um elemento/círculo, para ver os rituais.';
+    let seq = 0;
+
+    async function search() {
+        loaded = true;
+        const mine = ++seq;
+        if (!q('.rc-q').value.trim() && !q('.rc-element').value && !q('.rc-circle').value) {
+            cache = {};
+            q('.rc-list').innerHTML = '';
+            q('.rc-count').textContent = HINT;
+            return;
+        }
+        const p = new URLSearchParams();
+        const text = q('.rc-q').value.trim();
+        if (text) p.set('q', text);
+        if (q('.rc-element').value) p.set('elemento', q('.rc-element').value);
+        if (q('.rc-circle').value) p.set('circulo', q('.rc-circle').value);
+        p.set('limit', '200');
+        const r = await api('/api/rituais?' + p.toString());
+        if (mine !== seq) return;
+        if (!r.ok) { q('.rc-count').textContent = 'Não foi possível carregar o catálogo.'; return; }
+        cache = {};
+        r.data.rituais.forEach((x) => { cache[x.id] = x; });
+        q('.rc-count').textContent = r.data.total
+            ? r.data.total + ' ritual(is) encontrado(s).'
+            : 'Nenhum ritual encontrado.';
+        q('.rc-list').innerHTML = r.data.rituais.map(cardHtml).join('');
+    }
+
+    let timer = null;
+    q('.rc-q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 200); });
+    q('.rc-element').addEventListener('change', search);
+    q('.rc-circle').addEventListener('change', search);
+
+    // Só consulta o catálogo quando o bloco está aberto (evita uma busca por agente no admin).
+    root.addEventListener('toggle', () => { if (root.open && !loaded) search(); });
+    if (root.open) search();
+
+    q('.rc-list').addEventListener('click', async (e) => {
+        const btn = e.target.closest('button[data-act]');
+        if (!btn) return;
+        const id = btn.dataset.id, ritual = cache[id];
+        if (!ritual) return;
+
+        if (btn.dataset.act === 'add') {
+            const body = {};
+            if (IS_ADMIN) body.user_id = AGENT_ID;
+            const r = await api('/api/rituais/' + id + '/adicionar', 'POST', body);
+            showAlert(r.ok ? 'Ritual "' + ritual.name + '" adicionado.' : (r.data.error || 'Erro ao adicionar.'));
+            // Recarrega para o ritual aparecer na lista da ficha (a sub-aba atual é mantida).
+            if (r.ok) setTimeout(() => location.reload(), 900);
+        }
+    });
+
+})();
+</script>

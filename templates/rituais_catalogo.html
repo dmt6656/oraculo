@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Catálogo de Rituais — Ordem Paranormal</title>
+        <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}?v={{ asset_version('favicon.svg') }}">
+        <link rel="alternate icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}?v={{ asset_version('favicon.png') }}">
+        <link rel="apple-touch-icon" href="{{ url_for('static', filename='favicon.png') }}?v={{ asset_version('favicon.png') }}">
+        <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ asset_version('style.css') }}">
+        <script src="{{ url_for('static', filename='notify.js') }}?v={{ asset_version('notify.js') }}"></script>
+    </head>
+    <body>
+        <div class="container">
+            <header>
+                <h1>Catálogo de Rituais</h1>
+                <div class="header-actions">
+                    {% if user['is_admin'] %}<a href="{{ url_for('admin_log') }}">Log</a>{% endif %}
+                    <a href="{{ url_for('logout') }}">Sair</a>
+                </div>
+            </header>
+
+            <nav class="tab-nav">
+                <a href="{{ url_for('admin_panel') if user['is_admin'] else url_for('player_panel') }}" class="tab-link">Painel</a>
+                <a href="{{ url_for('pericias_panel') }}" class="tab-link">Perícias</a>
+                <a href="{{ url_for('combate_panel') }}" class="tab-link" id="nav-chat-link">Combate<span class="tab-unread-dot" id="nav-chat-unread"></span></a>
+                <a href="{{ url_for('agentes_panel') }}" class="tab-link">Agentes</a>
+                <a href="{{ url_for('campanha_panel') }}" class="tab-link">Campanha</a>
+                <a href="{{ url_for('mural_panel') }}" class="tab-link">Mural</a>
+                <a href="{{ url_for('rituais_panel') }}" class="tab-link active">Cat. Rituais</a>
+                <a href="{{ url_for('portrait_panel') }}" class="tab-link">Portrait</a>
+            </nav>
+
+            {% if user['is_admin'] %}
+            <div class="subtab-nav" role="tablist" aria-label="Seções de rituais">
+                <button type="button" class="subtab-btn active" role="tab" data-rt-target="catalogo">Catálogo ({{ catalog_total }})</button>
+                <button type="button" class="subtab-btn" role="tab" data-rt-target="fichas">Cadastrados nas fichas ({{ sheets_total }})</button>
+            </div>
+            {% endif %}
+
+            <div class="panel-section subtab-section" data-rt="catalogo">
+                <div class="section-title">Catálogo de Rituais</div>
+                {% if user['is_admin'] %}
+                <div class="rc-intro-row">
+                    <p class="character-header-sub">Pesquise um ritual para vê-lo. Aqui você cadastra, edita, exclui, importa e exporta o catálogo.</p>
+                    <a class="ritual-export-btn" href="{{ url_for('rituais_export') }}" download title="Exportar o catálogo inteiro em JSON">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v11m0 0l-4-4m4 4l4-4M5 19h14"/></svg>
+                        Exportar catálogo JSON
+                    </a>
+                </div>
+
+                {% else %}
+                <p class="character-header-sub">Pesquise um ritual para vê-lo. Use “Adicionar à minha ficha” para levar o ritual para a sua ficha.</p>
+                {% endif %}
+
+                <div class="field-grid rc-filter-grid">
+                    <div>
+                        <label for="f-q">Buscar</label>
+                        <input type="text" id="f-q" placeholder="Nome ou efeito..." autocomplete="off">
+                    </div>
+                    <div>
+                        <label for="f-element">Elemento</label>
+                        <select id="f-element">
+                            <option value="">Todos</option>
+                            {% for el in ritual_elements %}<option value="{{ el }}">{{ el }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="f-circle">Círculo</label>
+                        <select id="f-circle">
+                            <option value="">Todos</option>
+                            {% for c in ritual_circles %}<option value="{{ c }}">{{ c }}º Círculo</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <p class="character-header-sub rc-count-gap" id="cat-count"></p>
+                {% if user['is_admin'] %}
+                <details class="add-form-details rc-manage" id="rc-manage">
+                    <summary>Gerenciar catálogo (cadastrar / importar)</summary>
+                    <div class="section-subtitle" id="rc-form-title">Cadastrar Ritual no Catálogo</div>
+                    <div class="field-grid">
+                        <div><label>Nome</label><input type="text" data-f="name" maxlength="120"></div>
+                        <div>
+                            <label>Elemento</label>
+                            <select data-f="element">{% for el in ritual_elements %}<option value="{{ el }}">{{ el }}</option>{% endfor %}</select>
+                        </div>
+                        <div>
+                            <label>Círculo</label>
+                            <select data-f="circle">{% for c in ritual_circles %}<option value="{{ c }}">{{ c }}º Círculo</option>{% endfor %}</select>
+                        </div>
+                    </div>
+                    <div class="field-grid">
+                        <div><label>Execução</label><input type="text" data-f="execution"></div>
+                        <div><label>Alcance</label><input type="text" data-f="range"></div>
+                        <div><label>Alvo / Área</label><input type="text" data-f="target"></div>
+                        <div><label>Duração</label><input type="text" data-f="duration"></div>
+                        <div><label>Resistência</label><input type="text" data-f="resistance"></div>
+                    </div>
+                    <div class="inv-field"><label>Efeito (Normal)</label><textarea data-f="effect_summary" rows="3"></textarea></div>
+                    <div class="field-grid">
+                        <div><label>Custo Discente ({{ pe_t }})</label><input type="number" data-f="pe_cost_discente" min="0" value="0"></div>
+                        <div><label>Custo Verdadeiro ({{ pe_t }})</label><input type="number" data-f="pe_cost_verdadeira" min="0" value="0"></div>
+                    </div>
+                    <div class="inv-field"><label>Efeito Discente</label><textarea data-f="description_discente" rows="2"></textarea></div>
+                    <div class="inv-field"><label>Efeito Verdadeiro</label><textarea data-f="description_verdadeira" rows="2"></textarea></div>
+                    <button type="button" id="rc-save">Cadastrar Ritual</button>
+                    <button type="button" id="rc-cancel" class="btn-delete" style="display:none;">Cancelar edição</button>
+
+                    <div class="section-subtitle">Importar Rituais (JSON)</div>
+                    <p class="character-header-sub">Envie um arquivo .json com uma lista de rituais (formato do livro, em português, ou em inglês — inclusive o arquivo gerado por “Exportar catálogo JSON”). Rituais que já existem no catálogo (mesmo nome e elemento) são substituídos pelos da lista nova.</p>
+                    <div class="rc-import-row">
+                        <input type="file" id="rc-import-file" accept=".json,application/json">
+                        <button type="button" id="rc-import">Importar</button>
+                    </div>
+                </details>
+                {% endif %}
+                <div class="ritual-list" id="cat-list"></div>
+            </div>
+
+            {% if user['is_admin'] %}
+            <div class="panel-section subtab-section" data-rt="fichas" hidden>
+                <div class="section-title">Rituais já cadastrados nas fichas</div>
+                <p class="character-header-sub">O que cada agente tem hoje na ficha.</p>
+
+                {% for a in agent_sheets %}
+                <details class="add-form-details"{% if a['rituals'] %} open{% endif %}>
+                    <summary>{{ a['label'] }}{% if a['label'] != a['username'] %} ({{ a['username'] }}){% endif %} — {{ a['rituals']|length }} ritual(is)</summary>
+                    <div class="ritual-list">
+                        {% for r in a['rituals'] %}
+                        <div class="ritual-card elem-{{ r['element']|lower }}">
+                            <div class="ritual-card-header">
+                                {% if r['symbol'] %}<img class="ritual-symbol-mini" src="{{ url_for('static', filename='ritual_symbols/' + r['symbol']) }}" alt="Símbolo de {{ r['name'] }}">{% endif %}
+                                <span class="ritual-name">{{ r['name'] }}</span>
+                                <span class="ritual-element elem-{{ r['element']|lower }}">{{ r['element'] }}<svg class="ritual-element-icon" viewBox="0 0 800 800" aria-hidden="true">{{ ritual_element_icons.get(r['element']|lower, '') | safe }}</svg></span>
+                                <span class="ritual-pe"><span class="ritual-circle">{{ r['circle'] }}º Círculo</span></span>
+                                <span class="ability-pe-cost ritual-pe-chip">{{ r['pe_cost_normal'] }} {{ pe_t }}</span>
+                            </div>
+                            <div class="ritual-meta-grid">
+                                <div><span class="ritual-meta-label">Execução</span>{{ r['execution'] or '—' }}</div>
+                                <div><span class="ritual-meta-label">Alcance</span>{{ r['range_'] or '—' }}</div>
+                                <div><span class="ritual-meta-label">Alvo / Área</span>{{ r['target'] or '—' }}</div>
+                                <div><span class="ritual-meta-label">Duração</span>{{ r['duration'] or '—' }}</div>
+                                <div><span class="ritual-meta-label">Resistência</span>{{ r['resistance'] or 'Nenhuma' }}</div>
+                            </div>
+                            {% if r['effect_summary'] %}<div class="ritual-effect">{{ r['effect_summary'] }}</div>{% endif %}
+                            {% if r['description_discente'] %}<div class="ritual-effect"><strong>Discente ({{ r['pe_cost_discente'] }} {{ pe_t }}):</strong> {{ r['description_discente'] }}</div>{% endif %}
+                            {% if r['description_verdadeira'] %}<div class="ritual-effect"><strong>Verdadeiro ({{ r['pe_cost_verdadeira'] }} {{ pe_t }}):</strong> {{ r['description_verdadeira'] }}</div>{% endif %}
+                        </div>
+                        {% else %}
+                        <p class="empty">Nenhum ritual na ficha.</p>
+                        {% endfor %}
+                    </div>
+                </details>
+                {% else %}
+                <p class="empty">Nenhum agente cadastrado ainda.</p>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
+        <script>
+        (function () {
+            const ICONS = {{ ritual_element_icons | tojson }};
+            const USAGE = {{ sheet_usage | tojson }};
+            const IS_ADMIN = {{ 'true' if user['is_admin'] else 'false' }};
+            const MINE = new Set({{ my_rituals | tojson }});
+            const $ = (id) => document.getElementById(id);
+            let cache = {};
+
+            // sub-abas: Catálogo / Cadastrados nas fichas (só o mestre)
+            const btns = document.querySelectorAll('[data-rt-target]');
+            const secs = document.querySelectorAll('[data-rt]');
+            function show(name) {
+                btns.forEach((b) => {
+                    const on = b.dataset.rtTarget === name;
+                    b.classList.toggle('active', on);
+                    b.setAttribute('aria-selected', on ? 'true' : 'false');
+                });
+                secs.forEach((s) => { s.hidden = s.dataset.rt !== name; });
+                if (history.replaceState) history.replaceState(null, '', '#' + name);
+            }
+            btns.forEach((b) => b.addEventListener('click', () => show(b.dataset.rtTarget)));
+            if (IS_ADMIN) {
+                const h = (location.hash || '').replace('#', '');
+                show(h === 'fichas' ? 'fichas' : 'catalogo');
+            }
+
+            function esc(s) {
+                return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+                    ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+            }
+            function norm(s) {
+                return String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            }
+
+            function cardHtml(r) {
+                const el = String(r.element).toLowerCase();
+                const extra = (label, text) => text
+                    ? '<div class="ritual-effect"><strong>' + label + ':</strong> ' + esc(text) + '</div>' : '';
+                const used = IS_ADMIN ? USAGE[norm(r.name)] : null;
+                const usedHtml = used && used.length
+                    ? '<div class="ritual-effect"><strong>Já nas fichas de:</strong> ' + esc(used.join(', ')) + '</div>' : '';
+                const mine = MINE.has(norm(r.name));
+                const actions = IS_ADMIN
+                    ? '<div class="ritual-card-actions">' +
+                        '<button type="button" class="btn-sm" data-act="edit" data-id="' + r.id + '">Editar</button>' +
+                        '<button type="button" class="btn-sm btn-delete" data-act="del" data-id="' + r.id + '">Excluir</button></div>'
+                    : '<div class="ritual-card-actions"><button type="button" class="btn-sm btn-increase" data-act="add" data-id="' + r.id + '"' +
+                        (mine ? ' disabled' : '') + '>' + (mine ? 'Já está na sua ficha' : 'Adicionar à minha ficha') + '</button></div>';
+                return '<div class="ritual-card elem-' + esc(el) + '">' +
+                    '<div class="ritual-card-header">' +
+                        (r.symbol_url ? '<img class="ritual-symbol-mini" draggable="false" src="' + esc(r.symbol_url) + '" alt="Símbolo de ' + esc(r.name) + '">' : '') +
+                        '<span class="ritual-name">' + esc(r.name) + '</span>' +
+                        '<span class="ritual-element elem-' + esc(el) + '">' + esc(r.element) +
+                            '<svg class="ritual-element-icon" viewBox="0 0 800 800" aria-hidden="true">' + (ICONS[el] || '') + '</svg></span>' +
+                        '<span class="ritual-pe"><span class="ritual-circle">' + r.circle + 'º Círculo</span></span>' +
+                        '<span class="ability-pe-cost ritual-pe-chip">' + r.pe_cost_normal + ' {{ pe_t }}</span>' +
+                        actions +
+                    '</div>' +
+                    '<div class="ritual-meta-grid">' +
+                        '<div><span class="ritual-meta-label">Execução</span>' + esc(r.execution || '—') + '</div>' +
+                        '<div><span class="ritual-meta-label">Alcance</span>' + esc(r.range || '—') + '</div>' +
+                        '<div><span class="ritual-meta-label">Alvo / Área</span>' + esc(r.target || '—') + '</div>' +
+                        '<div><span class="ritual-meta-label">Duração</span>' + esc(r.duration || '—') + '</div>' +
+                        '<div><span class="ritual-meta-label">Resistência</span>' + esc(r.resistance || 'Nenhuma') + '</div>' +
+                    '</div>' +
+                    extra('Efeito', r.effect_summary) +
+                    extra('Discente (' + r.pe_cost_discente + ' {{ pe_t }})', r.description_discente) +
+                    extra('Verdadeiro (' + r.pe_cost_verdadeira + ' {{ pe_t }})', r.description_verdadeira) +
+                    usedHtml +
+                '</div>';
+            }
+
+            const HINT = 'Pesquise por nome ou efeito, ou escolha um elemento/círculo, para ver os rituais.';
+            let seq = 0;
+
+            async function search() {
+                const mine = ++seq;
+                if (!$('f-q').value.trim() && !$('f-element').value && !$('f-circle').value) {
+                    cache = {};
+                    $('cat-list').innerHTML = '';
+                    $('cat-count').textContent = HINT;
+                    return;
+                }
+                const p = new URLSearchParams();
+                if ($('f-q').value.trim()) p.set('q', $('f-q').value.trim());
+                if ($('f-element').value) p.set('elemento', $('f-element').value);
+                if ($('f-circle').value) p.set('circulo', $('f-circle').value);
+                p.set('limit', '200');
+                let data = {};
+                try {
+                    const res = await fetch('/api/rituais?' + p.toString());
+                    data = await res.json();
+                    if (mine !== seq) return;
+                    if (!res.ok) throw new Error();
+                } catch (e) { $('cat-count').textContent = 'Não foi possível carregar o catálogo.'; return; }
+                cache = {};
+                data.rituais.forEach((x) => { cache[x.id] = x; });
+                $('cat-count').textContent = !data.total ? 'Nenhum ritual encontrado.'
+                    : data.total > data.rituais.length
+                        ? 'Mostrando ' + data.rituais.length + ' de ' + data.total + ' ritual(is). Use a busca para filtrar.'
+                        : data.total + ' ritual(is) encontrado(s).';
+                $('cat-list').innerHTML = data.rituais.map(cardHtml).join('');
+            }
+
+            let timer = null;
+            $('f-q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 200); });
+            $('f-element').addEventListener('change', search);
+            $('f-circle').addEventListener('change', search);
+            // ações dos cards: adicionar à ficha (jogador) · editar / excluir (mestre)
+            $('cat-list').addEventListener('click', async (e) => {
+                const btn = e.target.closest('button[data-act]');
+                if (!btn || btn.disabled) return;
+                const ritual = cache[btn.dataset.id];
+                if (!ritual) return;
+
+                if (btn.dataset.act === 'edit' && IS_ADMIN) { startEdit(ritual); return; }
+                if (btn.dataset.act === 'del' && IS_ADMIN) {
+                    if (!(await askConfirm('Excluir "' + ritual.name + '" do catálogo?'))) return;
+                    const res = await fetch('/api/rituais/' + ritual.id, {method: 'DELETE'});
+                    let d = {};
+                    try { d = await res.json(); } catch (err) {}
+                    if (!res.ok || d.ok === false) showAlert(d.error || 'Erro ao excluir.');
+                    search();
+                    return;
+                }
+                if (btn.dataset.act !== 'add') return;
+
+                btn.disabled = true;
+                try {
+                    const res = await fetch('/api/rituais/' + btn.dataset.id + '/adicionar', {
+                        method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}',
+                    });
+                    let d = {};
+                    try { d = await res.json(); } catch (err) {}
+                    if (res.ok && d.ok !== false) {
+                        MINE.add(norm(ritual.name));
+                        btn.textContent = 'Já está na sua ficha';
+                        showAlert('Ritual "' + ritual.name + '" adicionado à sua ficha.');
+                    } else {
+                        if (res.status === 409) { MINE.add(norm(ritual.name)); btn.textContent = 'Já está na sua ficha'; }
+                        else btn.disabled = false;
+                        showAlert(d.error || 'Erro ao adicionar o ritual.');
+                    }
+                } catch (err) {
+                    btn.disabled = false;
+                    showAlert('Erro de conexão ao adicionar o ritual.');
+                }
+            });
+
+            // ---- mestre: cadastrar / editar / importar ----
+            if (IS_ADMIN) {
+                const FIELDS = ['name', 'element', 'circle', 'execution', 'range', 'target', 'duration',
+                                'resistance', 'effect_summary', 'pe_cost_discente', 'pe_cost_verdadeira',
+                                'description_discente', 'description_verdadeira'];
+                const field = (f) => document.querySelector('#rc-manage [data-f="' + f + '"]');
+                let editingId = null;
+
+                async function adminApi(url, method, body) {
+                    const res = await fetch(url, {
+                        method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+                    });
+                    let data = {};
+                    try { data = await res.json(); } catch (err) {}
+                    return {ok: res.ok && data.ok !== false, data};
+                }
+                function resetForm() {
+                    editingId = null;
+                    FIELDS.forEach((f) => {
+                        const el = field(f);
+                        el.value = (f === 'pe_cost_discente' || f === 'pe_cost_verdadeira') ? '0'
+                                 : (el.tagName === 'SELECT' ? el.options[0].value : '');
+                    });
+                    $('rc-form-title').textContent = 'Cadastrar Ritual no Catálogo';
+                    $('rc-save').textContent = 'Cadastrar Ritual';
+                    $('rc-cancel').style.display = 'none';
+                }
+                function startEdit(r) {
+                    editingId = r.id;
+                    FIELDS.forEach((f) => { field(f).value = r[f] == null ? '' : r[f]; });
+                    $('rc-form-title').textContent = 'Editar Ritual do Catálogo';
+                    $('rc-save').textContent = 'Salvar Alterações';
+                    $('rc-cancel').style.display = '';
+                    $('rc-manage').open = true;
+                    $('rc-manage').scrollIntoView({behavior: 'smooth', block: 'center'});
+                }
+                window.startEdit = startEdit;
+                $('rc-cancel').addEventListener('click', resetForm);
+                $('rc-save').addEventListener('click', async () => {
+                    const body = {};
+                    FIELDS.forEach((f) => { body[f] = field(f).value; });
+                    if (!body.name.trim()) { showAlert('Informe o nome do ritual.'); return; }
+                    const r = editingId
+                        ? await adminApi('/api/rituais/' + editingId, 'PUT', body)
+                        : await adminApi('/api/rituais', 'POST', body);
+                    if (!r.ok) { showAlert(r.data.error || 'Erro ao salvar.'); return; }
+                    showAlert(editingId ? 'Ritual atualizado.' : 'Ritual cadastrado.');
+                    resetForm();
+                    search();
+                });
+                $('rc-import').addEventListener('click', async () => {
+                    const input = $('rc-import-file');
+                    const file = input.files[0];
+                    if (!file) { showAlert('Escolha um arquivo .json.'); return; }
+                    let payload;
+                    try { payload = JSON.parse(await file.text()); }
+                    catch (err) { showAlert('Arquivo inválido: não é um JSON válido.'); return; }
+                    const r = await adminApi('/api/rituais?sobrescrever=1', 'POST', payload);
+                    const d = r.data || {};
+                    if (!d.created && !d.updated && !d.errors) { showAlert(d.error || 'Erro ao importar.'); return; }
+                    const errs = d.errors || [];
+                    let msg = (d.created || []).length + ' novo(s), ' + (d.updated || []).length + ' atualizado(s).';
+                    if (errs.length) {
+                        msg += ' ' + errs.length + ' ignorado(s): ' +
+                            errs.slice(0, 5).map((x) => (x.nome || '#' + x.index) + ' — ' + x.error).join(' | ') +
+                            (errs.length > 5 ? ' ...' : '');
+                    }
+                    showAlert(msg);
+                    input.value = '';
+                    search();
+                });
+            }
+
+            search();
+        })();
+        </script>
+        {% include '_chat_dock.html' %}
+    </body>
+</html>
